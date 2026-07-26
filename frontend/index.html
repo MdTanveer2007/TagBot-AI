@@ -85,7 +85,9 @@
             border-top: 1px solid #e5e7eb;
         }
 
-        #messageInput {
+        #messageInput {resize: none;
+min-height: 46px;
+max-height: 140px;
             flex: 1;
             padding: 12px 14px;
             border: 1px solid #d1d5db;
@@ -148,12 +150,12 @@
         </section>
 
         <form class="input-area" id="chatForm">
-            <input
-                id="messageInput"
-                type="text"
-                placeholder="Message TagBot..."
-                autocomplete="off"
-                required
+           <textarea
+    id="messageInput"
+    placeholder="Message TagBot..."
+    rows="1"
+    required
+></textarea>
             >
 
             <button id="sendButton" type="submit">
@@ -179,7 +181,12 @@ const newChatButton = document.getElementById("newChatButton");
 
         return message;
     }
-
+messageInput.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+    }
+});
     chatForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
