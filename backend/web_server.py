@@ -239,10 +239,6 @@ class TagBotHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
     def do_POST(self):
-        if self.path != "/api/chat":
-            self.send_error(404, "Not found")
-            return
-    def do_POST(self):
         if self.path == "/api/reset":
             conversation_history.clear()
             self.send_json({"message": "Conversation reset ho gayi."})
@@ -251,6 +247,7 @@ class TagBotHandler(BaseHTTPRequestHandler):
         if self.path != "/api/chat":
             self.send_error(404, "Not found")
             return
+
         try:
             content_length = int(
                 self.headers.get("Content-Length", "0")

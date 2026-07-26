@@ -85,15 +85,18 @@
             border-top: 1px solid #e5e7eb;
         }
 
-        #messageInput {resize: none;
-min-height: 46px;
-max-height: 140px;
+        #messageInput {
+            resize: none;
+            overflow-y: hidden;
+            min-height: 46px;
+            max-height: 140px;
             flex: 1;
             padding: 12px 14px;
             border: 1px solid #d1d5db;
             border-radius: 12px;
             font-size: 16px;
             outline: none;
+            line-height: 1.4;
         }
 
         #sendButton {
@@ -168,10 +171,17 @@ max-height: 140px;
     const messageInput = document.getElementById("messageInput");
     const messages = document.getElementById("messages");
     const sendButton = document.getElementById("sendButton");
-const newChatButton = document.getElementById("newChatButton");
+    const newChatButton = document.getElementById("newChatButton");
+
+    function adjustTextareaHeight() {
+        messageInput.style.height = "auto";
+        const maxHeight = 140;
+        const nextHeight = Math.min(messageInput.scrollHeight, maxHeight);
+        messageInput.style.height = `${nextHeight}px`;
+    }
+
     function addMessage(text, sender) {
         const message = document.createElement("div");
-
         message.className = `message ${sender}`;
         message.textContent = text;
 
@@ -180,12 +190,16 @@ const newChatButton = document.getElementById("newChatButton");
 
         return message;
     }
-messageInput.addEventListener("keydown", function (event) {
-    if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        chatForm.requestSubmit();
-    }
-});
+
+    messageInput.addEventListener("input", adjustTextareaHeight);
+
+    messageInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            chatForm.requestSubmit();
+        }
+    });
+
     chatForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
@@ -197,6 +211,7 @@ messageInput.addEventListener("keydown", function (event) {
 
         addMessage(text, "user");
         messageInput.value = "";
+        adjustTextareaHeight();
         sendButton.disabled = true;
 
         const loadingMessage = addMessage("Soch raha hoon...", "bot");
@@ -225,33 +240,37 @@ messageInput.addEventListener("keydown", function (event) {
             sendButton.disabled = false;
             messageInput.focus();
         }
-    });newChatButton.addEventListener("click", async function () {
-    newChatButton.disabled = true;
+    });
 
-    try {
-        const response = await fetch("/api/reset", {
-            method: "POST"
-        });
+    newChatButton.addEventListener("click", async function () {
+        newChatButton.disabled = true;
 
-        const data = await response.json();
+        try {
+            const response = await fetch("/api/reset", {
+                method: "POST"
+            });
 
-        if (!response.ok) {
-            throw new Error(data.error || "Reset failed.");
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Reset failed.");
+            }
+
+            messages.innerHTML = "";
+
+            addMessage(
+                "New chat start ho gayi. Permanent memories safe hain.",
+                "bot"
+            );
+        } catch (error) {
+            addMessage(`Error: ${error.message}`, "bot");
+        } finally {
+            newChatButton.disabled = false;
+            messageInput.focus();
         }
+    });
 
-        messages.innerHTML = "";
-
-        addMessage(
-            "New chat start ho gayi. Permanent memories safe hain.",
-            "bot"
-        );
-    } catch (error) {
-        addMessage(`Error: ${error.message}`, "bot");
-    } finally {
-        newChatButton.disabled = false;
-        messageInput.focus();
-    }
-});
+    adjustTextareaHeight();
 </script>
 </body>
 </html>
