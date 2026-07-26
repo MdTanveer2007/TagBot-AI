@@ -23,6 +23,8 @@ headers = {
     "x-goog-api-key": api_key,
 }
 
+conversation_history = []
+
 print("TagBot AI ready. Exit ke liye 'exit' likho.")
 
 while True:
@@ -35,6 +37,17 @@ while True:
     if not user_message:
         continue
 
+    conversation_history.append(
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "text": user_message
+                }
+            ]
+        }
+    )
+
     payload = {
         "system_instruction": {
             "parts": [
@@ -44,20 +57,13 @@ while True:
                         "Always identify yourself as TagBot AI, not as Google Gemini. "
                         "Reply mainly in natural Hinglish unless the user asks for another language. "
                         "Be helpful, honest, practical, and concise. "
-                        "Never claim to have abilities, memories, or access that you do not actually have."
+                        "Use earlier messages from the current conversation when relevant. "
+                        "Never claim to have memories or access beyond the current conversation."
                     )
                 }
             ]
         },
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": user_message
-                    }
-                ]
-            }
-        ]
+        "contents": conversation_history,
     }
 
     request = urllib.request.Request(
@@ -72,11 +78,25 @@ while True:
             result = json.loads(response.read().decode("utf-8"))
 
         reply = result["candidates"][0]["content"]["parts"][0]["text"]
+
+        conversation_history.append(
+            {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": reply
+                    }
+                ]
+            }
+        )
+
         print(f"\nTagBot: {reply}")
 
     except urllib.error.HTTPError as error:
+        conversation_history.pop()
         details = error.read().decode("utf-8", errors="replace")
         print(f"\nAPI error {error.code}: {details}")
 
     except Exception as error:
+        conversation_history.pop()
         print(f"\nError: {error}")
