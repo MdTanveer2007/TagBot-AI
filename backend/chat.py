@@ -2,6 +2,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -23,9 +24,35 @@ headers = {
     "x-goog-api-key": api_key,
 }
 
+memory_path = Path("data/memory.json")
+
+
+def load_memory():
+    try:
+        with memory_path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        if isinstance(data, dict):
+            return data
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    return {}
+
+
+def save_memory(memory):
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with memory_path.open("w", encoding="utf-8") as file:
+        json.dump(memory, file, ensure_ascii=False, indent=2)
+
+
+permanent_memory = load_memory()
 conversation_history = []
 
 print("TagBot AI ready. Exit ke liye 'exit' likho.")
+print("Permanent memory save karne ke liye: remember: <baat>")
 
 while True:
     user_message = input("\nYou: ").strip()
@@ -36,6 +63,35 @@ while True:
 
     if not user_message:
         continue
+
+    if user_message.lower().startswith("remember:"):
+        fact = user_message.split(":", 1)[1].strip()
+
+        if not fact:
+            print("TagBot: Yaad rakhne ke liye koi baat likho.")
+            continue
+
+        key = f"fact_{len(permanent_memory) + 1}"
+        permanent_memory[key] = fact
+        save_memory(permanent_memory)
+
+        print(f"TagBot: Theek hai bhai, maine yaad rakh liya: {fact}")
+        continue
+
+    memory_text = "\n".join(
+        f"- {value}" for value in permanent_memory.values()
+    )
+
+    system_prompt = (
+        "You are TagBot AI, a personal AI assistant created for Md Tanveer. "
+        "Always identify yourself as TagBot AI, not as Google Gemini. "
+        "Reply mainly in natural Hinglish unless the user asks for another language. "
+        "Be helpful, honest, practical, and concise. "
+        "Use earlier messages from the current conversation when relevant. "
+        "Use the saved permanent memory below when relevant. "
+        "Never invent memories or access you do not have.\n\n"
+        f"Saved permanent memory:\n{memory_text or '- No saved memory yet.'}"
+    )
 
     conversation_history.append(
         {
@@ -52,14 +108,7 @@ while True:
         "system_instruction": {
             "parts": [
                 {
-                    "text": (
-                        "You are TagBot AI, a personal AI assistant created for Md Tanveer. "
-                        "Always identify yourself as TagBot AI, not as Google Gemini. "
-                        "Reply mainly in natural Hinglish unless the user asks for another language. "
-                        "Be helpful, honest, practical, and concise. "
-                        "Use earlier messages from the current conversation when relevant. "
-                        "Never claim to have memories or access beyond the current conversation."
-                    )
+                    "text": system_prompt
                 }
             ]
         },
