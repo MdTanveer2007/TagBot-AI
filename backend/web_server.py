@@ -4,6 +4,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -47,6 +48,31 @@ def save_memory(memory):
 
     with MEMORY_PATH.open("w", encoding="utf-8") as file:
         json.dump(memory, file, ensure_ascii=False, indent=2)
+
+
+def list_memories():
+    permanent_memory = load_memory()
+    return [
+        {
+            "id": memory_key,
+            "number": index,
+            "text": memory_text,
+        }
+        for index, (memory_key, memory_text) in enumerate(
+            permanent_memory.items(),
+            start=1,
+        )
+    ]
+
+
+def delete_memory(memory_key):
+    permanent_memory = load_memory()
+
+    if memory_key not in permanent_memory:
+        raise KeyError("Memory not found")
+
+    del permanent_memory[memory_key]
+    save_memory(permanent_memory)
 
 
 def get_next_memory_key(memory):
@@ -220,7 +246,9 @@ class TagBotHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path in {"/", "/index.html"}:
+        path = urlparse(self.path).path
+
+        if path in {"/", "/index.html"}:
             file_path = FRONTEND_DIR / "index.html"
 
             try:
@@ -236,15 +264,21 @@ class TagBotHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
+        if path == "/api/memories":
+            self.send_json({"memories": list_memories()})
+            return
+
         self.send_error(404, "Not found")
 
     def do_POST(self):
-        if self.path == "/api/reset":
+        path = urlparse(self.path).path
+
+        if path == "/api/reset":
             conversation_history.clear()
             self.send_json({"message": "Conversation reset ho gayi."})
             return
 
-        if self.path != "/api/chat":
+        if path != "/api/chat":
             self.send_error(404, "Not found")
             return
 
@@ -273,6 +307,36 @@ class TagBotHandler(BaseHTTPRequestHandler):
                 {"error": str(error)},
                 status=500,
             )
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+
+        if path.startswith("/api/memories/"):
+            memory_key = unquote(path[len("/api/memories/"):])
+
+            if not memory_key:
+                self.send_json(
+                    {"error": "Memory id missing."},
+                    status=400,
+                )
+                return
+
+            try:
+                delete_memory(memory_key)
+                self.send_json({"message": "Memory deleted."})
+            except KeyError:
+                self.send_json(
+                    {"error": "Memory not found."},
+                    status=404,
+                )
+            except Exception as error:
+                self.send_json(
+                    {"error": str(error)},
+                    status=500,
+                )
+            return
+
+        self.send_error(404, "Not found")
 
     def log_message(self, format, *args):
         return

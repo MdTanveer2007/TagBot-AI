@@ -50,6 +50,63 @@
             font-size: 14px;
         }
 
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .memory-panel {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 22px;
+            background: #fafafa;
+        }
+
+        .memory-panel[hidden] {
+            display: none;
+        }
+
+        .memory-panel__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .memory-list-items {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .memory-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .memory-item__text {
+            flex: 1;
+            white-space: pre-wrap;
+        }
+
+        .memory-empty {
+            margin: 0;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
         .messages {
             flex: 1;
             overflow-y: auto;
@@ -118,7 +175,10 @@
     gap: 16px;
 }
 
-#newChatButton {
+#newChatButton,
+#memoriesButton,
+#closeMemoriesButton,
+.memory-delete-button {
     border: 1px solid #d1d5db;
     background: white;
     padding: 9px 14px;
@@ -127,8 +187,16 @@
     font-size: 14px;
 }
 
-#newChatButton:hover {
+#newChatButton:hover,
+#memoriesButton:hover,
+#closeMemoriesButton:hover,
+.memory-delete-button:hover {
     background: #f9fafb;
+}
+
+.memory-delete-button {
+    padding: 7px 10px;
+    color: #b91c1c;
 }
     </style>
 </head>
@@ -141,10 +209,27 @@
         <p>Your personal AI assistant</p>
     </div>
 
-    <button id="newChatButton" type="button">
-        New Chat
-    </button>
+    <div class="header-actions">
+        <button id="memoriesButton" type="button">
+            Memories
+        </button>
+        <button id="newChatButton" type="button">
+            New Chat
+        </button>
+    </div>
 </header>
+
+        <section class="memory-panel" id="memoryPanel" hidden>
+            <div class="memory-panel__header">
+                <span>Saved memories</span>
+                <button id="closeMemoriesButton" type="button">
+                    Close
+                </button>
+            </div>
+            <div id="memoryList">
+                <p class="memory-empty">Loading memories…</p>
+            </div>
+        </section>
 
         <section class="messages" id="messages">
             <div class="message bot">
@@ -172,6 +257,10 @@
     const messages = document.getElementById("messages");
     const sendButton = document.getElementById("sendButton");
     const newChatButton = document.getElementById("newChatButton");
+    const memoriesButton = document.getElementById("memoriesButton");
+    const memoryPanel = document.getElementById("memoryPanel");
+    const memoryList = document.getElementById("memoryList");
+    const closeMemoriesButton = document.getElementById("closeMemoriesButton");
 
     function adjustTextareaHeight() {
         messageInput.style.height = "auto";
@@ -189,6 +278,74 @@
         messages.scrollTop = messages.scrollHeight;
 
         return message;
+    }
+
+    async function loadMemories() {
+        memoryPanel.hidden = false;
+        memoryList.innerHTML = '<p class="memory-empty">Loading memories…</p>';
+
+        try {
+            const response = await fetch("/api/memories");
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Unable to load memories.");
+            }
+
+            const memories = Array.isArray(data.memories) ? data.memories : [];
+
+            if (!memories.length) {
+                memoryList.innerHTML = '<p class="memory-empty">No permanent memories saved yet.</p>';
+                return;
+            }
+
+            const ul = document.createElement("ul");
+            ul.className = "memory-list-items";
+
+            memories.forEach((memory) => {
+                const li = document.createElement("li");
+                li.className = "memory-item";
+                li.innerHTML = `
+                    <div class="memory-item__text">
+                        <strong>${memory.number}. </strong>${memory.text}
+                    </div>
+                    <button class="memory-delete-button" type="button">
+                        Delete
+                    </button>
+                `;
+
+                const deleteButton = li.querySelector(".memory-delete-button");
+                deleteButton.addEventListener("click", async function () {
+                    const confirmed = window.confirm(`Delete memory ${memory.number}?`);
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    try {
+                        const deleteResponse = await fetch(`/api/memories/${encodeURIComponent(memory.id)}`, {
+                            method: "DELETE"
+                        });
+                        const deleteData = await deleteResponse.json();
+
+                        if (!deleteResponse.ok) {
+                            throw new Error(deleteData.error || "Delete failed.");
+                        }
+
+                        await loadMemories();
+                    } catch (error) {
+                        memoryList.innerHTML = `<p class="memory-empty">Error: ${error.message}</p>`;
+                    }
+                });
+
+                ul.appendChild(li);
+            });
+
+            memoryList.innerHTML = "";
+            memoryList.appendChild(ul);
+        } catch (error) {
+            memoryList.innerHTML = `<p class="memory-empty">Error: ${error.message}</p>`;
+        }
     }
 
     messageInput.addEventListener("input", adjustTextareaHeight);
@@ -240,6 +397,18 @@
             sendButton.disabled = false;
             messageInput.focus();
         }
+    });
+
+    memoriesButton.addEventListener("click", async function () {
+        if (memoryPanel.hidden) {
+            await loadMemories();
+        } else {
+            memoryPanel.hidden = true;
+        }
+    });
+
+    closeMemoriesButton.addEventListener("click", function () {
+        memoryPanel.hidden = true;
     });
 
     newChatButton.addEventListener("click", async function () {
