@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TagBot AI</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 800px;
+            height: 85vh;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 18px 22px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        .header p {
+            margin: 5px 0 0;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .message {
+            max-width: 78%;
+            padding: 12px 15px;
+            border-radius: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .bot {
+            align-self: flex-start;
+            background: #eef2ff;
+        }
+
+        .user {
+            align-self: flex-end;
+            background: #111827;
+            color: white;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+            padding: 16px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        #sendButton {
+            border: none;
+            border-radius: 12px;
+            padding: 0 20px;
+            font-size: 15px;
+            cursor: pointer;
+            background: #111827;
+            color: white;
+        }
+
+        #sendButton:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="app">
+        <header class="header">
+            <h1>TagBot AI</h1>
+            <p>Your personal AI assistant</p>
+        </header>
+
+        <section class="messages" id="messages">
+            <div class="message bot">
+                Hello bhai! Main TagBot AI hoon.
+            </div>
+        </section>
+
+        <form class="input-area" id="chatForm">
+            <input
+                id="messageInput"
+                type="text"
+                placeholder="Message TagBot..."
+                autocomplete="off"
+                required
+            >
+
+            <button id="sendButton" type="submit">
+                Send
+            </button>
+        </form>
+    </main>
+
+    <script>
+        const chatForm = document.getElementById("chatForm");
+        const messageInput = document.getElementById("messageInput");
+        const messages = document.getElementById("messages");
+
+        function addMessage(text, sender) {
+            const message = document.createElement("div");
+
+            message.className = `message ${sender}`;
+            message.textContent = text;
+
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        chatForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            const text = messageInput.value.trim();
+
+            if (!text) {
+                return;
+            }
+
+            addMessage(text, "user");
+            messageInput.value = "";
+
+            addMessage(
+                "Browser interface ready hai. AI backend connection next step me add hoga.",
+                "bot"
+            );
+        });
+    </script>
+</body>
+</html>
