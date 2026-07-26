@@ -106,16 +106,40 @@
 
         #sendButton:hover {
             opacity: 0.9;
-        }
+        }.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+#newChatButton {
+    border: 1px solid #d1d5db;
+    background: white;
+    padding: 9px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#newChatButton:hover {
+    background: #f9fafb;
+}
     </style>
 </head>
 
 <body>
     <main class="app">
-        <header class="header">
-            <h1>TagBot AI</h1>
-            <p>Your personal AI assistant</p>
-        </header>
+       <header class="header">
+    <div>
+        <h1>TagBot AI</h1>
+        <p>Your personal AI assistant</p>
+    </div>
+
+    <button id="newChatButton" type="button">
+        New Chat
+    </button>
+</header>
 
         <section class="messages" id="messages">
             <div class="message bot">
@@ -143,7 +167,7 @@
     const messageInput = document.getElementById("messageInput");
     const messages = document.getElementById("messages");
     const sendButton = document.getElementById("sendButton");
-
+const newChatButton = document.getElementById("newChatButton");
     function addMessage(text, sender) {
         const message = document.createElement("div");
 
@@ -195,7 +219,33 @@
             sendButton.disabled = false;
             messageInput.focus();
         }
-    });
+    });newChatButton.addEventListener("click", async function () {
+    newChatButton.disabled = true;
+
+    try {
+        const response = await fetch("/api/reset", {
+            method: "POST"
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Reset failed.");
+        }
+
+        messages.innerHTML = "";
+
+        addMessage(
+            "New chat start ho gayi. Permanent memories safe hain.",
+            "bot"
+        );
+    } catch (error) {
+        addMessage(`Error: ${error.message}`, "bot");
+    } finally {
+        newChatButton.disabled = false;
+        messageInput.focus();
+    }
+});
 </script>
 </body>
 </html>
