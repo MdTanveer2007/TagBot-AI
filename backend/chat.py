@@ -130,7 +130,34 @@ while True:
                 print(f"{number}. {fact}")
 
         continue
+    if user_message.lower().startswith("forget "):
+        memory_number_text = user_message.split(" ", 1)[1].strip()
 
+        if not memory_number_text.isdigit():
+            print("TagBot: Example use karo: forget 1")
+            continue
+
+        memory_number = int(memory_number_text)
+        memory_items = list(permanent_memory.items())
+
+        if memory_number < 1 or memory_number > len(memory_items):
+            print("TagBot: Is number ki koi saved memory nahi hai.")
+            continue
+
+        memory_key, memory_fact = memory_items[memory_number - 1]
+
+        confirmation = input(
+            f"'{memory_fact}' delete karne ke liye DELETE likho: "
+        ).strip()
+
+        if confirmation == "DELETE":
+            del permanent_memory[memory_key]
+            save_memory(permanent_memory)
+            print("TagBot: Selected memory delete kar di gayi.")
+        else:
+            print("TagBot: Memory deletion cancel kar di gayi.")
+
+        continue
     if user_message.lower() == "forget all":
         confirmation = input(
             "Saari memories delete karne ke liye DELETE likho: "
