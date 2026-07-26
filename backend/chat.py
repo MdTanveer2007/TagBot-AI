@@ -116,7 +116,14 @@ while True:
 
     if not user_message:
         continue
-
+    if user_message.lower() == "help":
+        print("TagBot: Available commands:")
+        print("1. remember: <baat>  — permanent memory save karo")
+        print("2. memories          — saved memories dekho")
+        print("3. forget <number>   — ek specific memory delete karo")
+        print("4. forget all        — saari memories delete karo")
+        print("5. exit              — TagBot band karo")
+        continue
     if user_message.lower() == "memories":
         if not permanent_memory:
             print("TagBot: Abhi koi permanent memory saved nahi hai.")
