@@ -7,16 +7,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv()
+# Project folder ka exact path
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Project ki .env file load karo
+load_dotenv(BASE_DIR / ".env")
 
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
     raise RuntimeError("GEMINI_API_KEY .env file me nahi mili.")
 
+MODEL_NAME = "gemini-3.6-flash"
+
 url = (
     "https://generativelanguage.googleapis.com/v1beta/"
-    "models/gemini-3.6-flash:generateContent"
+    f"models/{MODEL_NAME}:generateContent"
 )
 
 headers = {
@@ -24,10 +30,11 @@ headers = {
     "x-goog-api-key": api_key,
 }
 
-memory_path = Path("data/memory.json")
+memory_path = BASE_DIR / "data" / "memory.json"
 
 
 def load_memory():
+    """Laptop par saved permanent memories load karta hai."""
     try:
         with memory_path.open("r", encoding="utf-8") as file:
             data = json.load(file)
@@ -42,17 +49,63 @@ def load_memory():
 
 
 def save_memory(memory):
+    """Permanent memories ko local JSON file me save karta hai."""
     memory_path.parent.mkdir(parents=True, exist_ok=True)
 
     with memory_path.open("w", encoding="utf-8") as file:
-        json.dump(memory, file, ensure_ascii=False, indent=2)
+        json.dump(
+            memory,
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+def get_next_memory_key(memory):
+    """Nayi memory ke liye safe unique key banata hai."""
+    numbers = []
+
+    for key in memory:
+        if key.startswith("fact_"):
+            try:
+                numbers.append(int(key.split("_", 1)[1]))
+            except ValueError:
+                continue
+
+    next_number = max(numbers, default=0) + 1
+    return f"fact_{next_number}"
+
+
+def extract_reply(result):
+    """Gemini API response se text safely nikalta hai."""
+    candidates = result.get("candidates", [])
+
+    if not candidates:
+        return "Mujhe is request ka response generate nahi mila."
+
+    content = candidates[0].get("content", {})
+    parts = content.get("parts", [])
+
+    text_parts = [
+        part.get("text", "")
+        for part in parts
+        if part.get("text")
+    ]
+
+    if not text_parts:
+        return "Response mila, lekin usme text available nahi tha."
+
+    return "\n".join(text_parts)
 
 
 permanent_memory = load_memory()
 conversation_history = []
 
-print("TagBot AI ready. Exit ke liye 'exit' likho.")
-print("Permanent memory save karne ke liye: remember: <baat>")
+print("TagBot AI ready.")
+print("Band karne ke liye: exit")
+print("Memory save karne ke liye: remember: <baat>")
+print("Saved memories dekhne ke liye: memories")
+print("Saari memories delete karne ke liye: forget all")
 
 while True:
     user_message = input("\nYou: ").strip()
@@ -64,6 +117,34 @@ while True:
     if not user_message:
         continue
 
+    if user_message.lower() == "memories":
+        if not permanent_memory:
+            print("TagBot: Abhi koi permanent memory saved nahi hai.")
+        else:
+            print("TagBot: Saved permanent memories:")
+
+            for number, fact in enumerate(
+                permanent_memory.values(),
+                start=1,
+            ):
+                print(f"{number}. {fact}")
+
+        continue
+
+    if user_message.lower() == "forget all":
+        confirmation = input(
+            "Saari memories delete karne ke liye DELETE likho: "
+        ).strip()
+
+        if confirmation == "DELETE":
+            permanent_memory.clear()
+            save_memory(permanent_memory)
+            print("TagBot: Saari permanent memories delete kar di gayi hain.")
+        else:
+            print("TagBot: Memory deletion cancel kar di gayi.")
+
+        continue
+
     if user_message.lower().startswith("remember:"):
         fact = user_message.split(":", 1)[1].strip()
 
@@ -71,7 +152,7 @@ while True:
             print("TagBot: Yaad rakhne ke liye koi baat likho.")
             continue
 
-        key = f"fact_{len(permanent_memory) + 1}"
+        key = get_next_memory_key(permanent_memory)
         permanent_memory[key] = fact
         save_memory(permanent_memory)
 
@@ -79,7 +160,8 @@ while True:
         continue
 
     memory_text = "\n".join(
-        f"- {value}" for value in permanent_memory.values()
+        f"- {value}"
+        for value in permanent_memory.values()
     )
 
     system_prompt = (
@@ -88,9 +170,10 @@ while True:
         "Reply mainly in natural Hinglish unless the user asks for another language. "
         "Be helpful, honest, practical, and concise. "
         "Use earlier messages from the current conversation when relevant. "
-        "Use the saved permanent memory below when relevant. "
-        "Never invent memories or access you do not have.\n\n"
-        f"Saved permanent memory:\n{memory_text or '- No saved memory yet.'}"
+        "Use saved permanent memories only when relevant. "
+        "Never invent memories, abilities, or access that you do not have.\n\n"
+        f"Saved permanent memories:\n"
+        f"{memory_text or '- No permanent memories saved yet.'}"
     )
 
     conversation_history.append(
@@ -98,17 +181,17 @@ while True:
             "role": "user",
             "parts": [
                 {
-                    "text": user_message
+                    "text": user_message,
                 }
-            ]
+            ],
         }
     )
 
     payload = {
-        "system_instruction": {
+        "systemInstruction": {
             "parts": [
                 {
-                    "text": system_prompt
+                    "text": system_prompt,
                 }
             ]
         },
@@ -123,19 +206,24 @@ while True:
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(
+            request,
+            timeout=60,
+        ) as response:
+            result = json.loads(
+                response.read().decode("utf-8")
+            )
 
-        reply = result["candidates"][0]["content"]["parts"][0]["text"]
+        reply = extract_reply(result)
 
         conversation_history.append(
             {
                 "role": "model",
                 "parts": [
                     {
-                        "text": reply
+                        "text": reply,
                     }
-                ]
+                ],
             }
         )
 
@@ -143,7 +231,12 @@ while True:
 
     except urllib.error.HTTPError as error:
         conversation_history.pop()
-        details = error.read().decode("utf-8", errors="replace")
+
+        details = error.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
         print(f"\nAPI error {error.code}: {details}")
 
     except Exception as error:
