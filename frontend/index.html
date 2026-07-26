@@ -138,38 +138,64 @@
         </form>
     </main>
 
-    <script>
-        const chatForm = document.getElementById("chatForm");
-        const messageInput = document.getElementById("messageInput");
-        const messages = document.getElementById("messages");
+  <script>
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("messageInput");
+    const messages = document.getElementById("messages");
+    const sendButton = document.getElementById("sendButton");
 
-        function addMessage(text, sender) {
-            const message = document.createElement("div");
+    function addMessage(text, sender) {
+        const message = document.createElement("div");
 
-            message.className = `message ${sender}`;
-            message.textContent = text;
+        message.className = `message ${sender}`;
+        message.textContent = text;
 
-            messages.appendChild(message);
-            messages.scrollTop = messages.scrollHeight;
+        messages.appendChild(message);
+        messages.scrollTop = messages.scrollHeight;
+
+        return message;
+    }
+
+    chatForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const text = messageInput.value.trim();
+
+        if (!text) {
+            return;
         }
 
-        chatForm.addEventListener("submit", function (event) {
-            event.preventDefault();
+        addMessage(text, "user");
+        messageInput.value = "";
+        sendButton.disabled = true;
 
-            const text = messageInput.value.trim();
+        const loadingMessage = addMessage("Soch raha hoon...", "bot");
 
-            if (!text) {
-                return;
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: text
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Request failed.");
             }
 
-            addMessage(text, "user");
-            messageInput.value = "";
-
-            addMessage(
-                "Browser interface ready hai. AI backend connection next step me add hoga.",
-                "bot"
-            );
-        });
-    </script>
+            loadingMessage.textContent = data.reply;
+        } catch (error) {
+            loadingMessage.textContent = `Error: ${error.message}`;
+        } finally {
+            sendButton.disabled = false;
+            messageInput.focus();
+        }
+    });
+</script>
 </body>
 </html>
