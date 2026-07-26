@@ -8,3 +8,4 @@ __pycache__/
 Thumbs.db
 .DS_Store
 data/memory.json
+data/chat_history.json

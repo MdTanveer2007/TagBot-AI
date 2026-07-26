@@ -2,9 +2,11 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -12,6 +14,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 MEMORY_PATH = BASE_DIR / "data" / "memory.json"
+CHAT_HISTORY_PATH = BASE_DIR / "data" / "chat_history.json"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -28,6 +31,7 @@ GEMINI_URL = (
 )
 
 conversation_history = []
+chat_history_store = {"conversations": [], "active_conversation_id": None}
 
 
 def load_memory():
@@ -86,6 +90,246 @@ def get_next_memory_key(memory):
                 continue
 
     return f"fact_{max(numbers, default=0) + 1}"
+
+
+def create_conversation(title="New chat"):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {
+        "id": uuid4().hex,
+        "title": title,
+        "created_at": now,
+        "updated_at": now,
+        "messages": [],
+    }
+
+
+def build_conversation_title(messages):
+    for message in messages:
+        if message.get("role") == "user" and message.get("text"):
+            title = " ".join(message["text"].split())
+            if len(title) > 40:
+                title = f"{title[:37]}..."
+            return title
+
+    return "New chat"
+
+
+def normalize_conversation(conversation):
+    if not isinstance(conversation, dict):
+        return None
+
+    conversation_id = conversation.get("id")
+    if not isinstance(conversation_id, str) or not conversation_id:
+        conversation_id = uuid4().hex
+
+    title = conversation.get("title")
+    if not isinstance(title, str) or not title:
+        title = "New chat"
+
+    created_at = conversation.get("created_at")
+    if not isinstance(created_at, str) or not created_at:
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    updated_at = conversation.get("updated_at")
+    if not isinstance(updated_at, str) or not updated_at:
+        updated_at = created_at
+
+    messages = conversation.get("messages")
+    if not isinstance(messages, list):
+        messages = []
+
+    normalized_messages = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get("role")
+        text = message.get("text")
+
+        if role in {"user", "assistant"} and isinstance(text, str):
+            normalized_messages.append({"role": role, "text": text})
+
+    return {
+        "id": conversation_id,
+        "title": title,
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "messages": normalized_messages,
+    }
+
+
+def load_chat_history_store():
+    global chat_history_store, conversation_history
+
+    try:
+        with CHAT_HISTORY_PATH.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError):
+        data = {"conversations": [], "active_conversation_id": None}
+
+    raw_conversations = data.get("conversations")
+    conversations = []
+
+    if isinstance(raw_conversations, list):
+        for item in raw_conversations:
+            normalized = normalize_conversation(item)
+            if normalized:
+                conversations.append(normalized)
+
+    if not conversations:
+        new_conversation = create_conversation()
+        conversations.append(new_conversation)
+
+    active_conversation_id = data.get("active_conversation_id")
+    if not isinstance(active_conversation_id, str) or not any(
+        conversation["id"] == active_conversation_id
+        for conversation in conversations
+    ):
+        active_conversation_id = conversations[-1]["id"]
+
+    chat_history_store = {
+        "conversations": conversations,
+        "active_conversation_id": active_conversation_id,
+    }
+
+    sync_conversation_from_store()
+    return chat_history_store
+
+
+def save_chat_history_store():
+    CHAT_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    with CHAT_HISTORY_PATH.open("w", encoding="utf-8") as file:
+        json.dump(
+            chat_history_store,
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+def get_active_conversation():
+    for conversation in chat_history_store.get("conversations", []):
+        if conversation["id"] == chat_history_store.get("active_conversation_id"):
+            return conversation
+
+    return None
+
+
+def sync_conversation_from_store():
+    global conversation_history
+
+    active_conversation = get_active_conversation()
+
+    if active_conversation is None:
+        conversation_history = []
+        return conversation_history
+
+    conversation_history = [
+        {"role": message["role"], "text": message["text"]}
+        for message in active_conversation.get("messages", [])
+    ]
+
+    return conversation_history
+
+
+def save_current_conversation():
+    global chat_history_store
+
+    active_conversation = get_active_conversation()
+
+    if active_conversation is None:
+        active_conversation = create_conversation()
+        chat_history_store["conversations"].append(active_conversation)
+        chat_history_store["active_conversation_id"] = active_conversation["id"]
+
+    active_conversation["messages"] = [
+        {"role": message["role"], "text": message["text"]}
+        for message in conversation_history
+    ]
+    active_conversation["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if active_conversation.get("title") == "New chat" and active_conversation["messages"]:
+        active_conversation["title"] = build_conversation_title(active_conversation["messages"])
+
+    save_chat_history_store()
+    return active_conversation
+
+
+def list_conversations():
+    conversations = []
+
+    for conversation in chat_history_store.get("conversations", []):
+        conversations.append(
+            {
+                "id": conversation["id"],
+                "title": conversation["title"],
+                "created_at": conversation["created_at"],
+                "updated_at": conversation["updated_at"],
+                "message_count": len(conversation.get("messages", [])),
+            }
+        )
+
+    return conversations
+
+
+def get_conversation_by_id(conversation_id):
+    for conversation in chat_history_store.get("conversations", []):
+        if conversation["id"] == conversation_id:
+            return conversation
+
+    return None
+
+
+def set_active_conversation(conversation_id):
+    global chat_history_store
+
+    conversations = chat_history_store.get("conversations", [])
+    for conversation in conversations:
+        if conversation["id"] == conversation_id:
+            chat_history_store["active_conversation_id"] = conversation_id
+            save_chat_history_store()
+            sync_conversation_from_store()
+            return True
+
+    return False
+
+
+def start_new_conversation():
+    global chat_history_store, conversation_history
+
+    new_conversation = create_conversation()
+    chat_history_store["conversations"].append(new_conversation)
+    chat_history_store["active_conversation_id"] = new_conversation["id"]
+    conversation_history = []
+    save_chat_history_store()
+    return new_conversation
+
+
+def delete_conversation(conversation_id):
+    global chat_history_store, conversation_history
+
+    conversations = chat_history_store.get("conversations", [])
+    remaining = [
+        conversation
+        for conversation in conversations
+        if conversation["id"] != conversation_id
+    ]
+
+    if not remaining:
+        new_conversation = create_conversation()
+        remaining.append(new_conversation)
+
+    if chat_history_store.get("active_conversation_id") == conversation_id:
+        chat_history_store["active_conversation_id"] = remaining[-1]["id"]
+    chat_history_store["conversations"] = remaining
+
+    if conversation_id == chat_history_store.get("active_conversation_id"):
+        conversation_history = []
+    else:
+        sync_conversation_from_store()
+
+    save_chat_history_store()
 
 
 def process_local_command(message):
@@ -157,6 +401,9 @@ def ask_gemini(message):
     local_reply = process_local_command(message)
 
     if local_reply is not None:
+        conversation_history.append({"role": "user", "text": message})
+        conversation_history.append({"role": "assistant", "text": local_reply})
+        save_current_conversation()
         return local_reply
 
     permanent_memory = load_memory()
@@ -177,18 +424,19 @@ def ask_gemini(message):
         f"{memory_text or '- No permanent memories saved yet.'}"
     )
 
-    conversation_history.append(
-        {
-            "role": "user",
-            "parts": [{"text": message}],
-        }
-    )
+    conversation_history.append({"role": "user", "text": message})
 
     payload = {
         "systemInstruction": {
             "parts": [{"text": system_prompt}]
         },
-        "contents": conversation_history,
+        "contents": [
+            {
+                "role": "user" if item["role"] == "user" else "model",
+                "parts": [{"text": item["text"]}],
+            }
+            for item in conversation_history
+        ],
     }
 
     request = urllib.request.Request(
@@ -209,13 +457,8 @@ def ask_gemini(message):
             result["candidates"][0]["content"]["parts"][0]["text"]
         )
 
-        conversation_history.append(
-            {
-                "role": "model",
-                "parts": [{"text": reply}],
-            }
-        )
-
+        conversation_history.append({"role": "assistant", "text": reply})
+        save_current_conversation()
         return reply
 
     except urllib.error.HTTPError as error:
@@ -268,14 +511,52 @@ class TagBotHandler(BaseHTTPRequestHandler):
             self.send_json({"memories": list_memories()})
             return
 
+        if path == "/api/conversations":
+            active_conversation = get_active_conversation()
+            self.send_json(
+                {
+                    "conversations": list_conversations(),
+                    "activeConversationId": chat_history_store.get("active_conversation_id"),
+                    "activeConversation": {
+                        "id": active_conversation["id"],
+                        "title": active_conversation["title"],
+                        "messages": active_conversation.get("messages", []),
+                    }
+                    if active_conversation
+                    else None,
+                }
+            )
+            return
+
+        if path.startswith("/api/conversations/"):
+            conversation_id = unquote(path[len("/api/conversations/"):])
+
+            if not conversation_id:
+                self.send_json({"error": "Conversation id missing."}, status=400)
+                return
+
+            conversation = get_conversation_by_id(conversation_id)
+            if conversation is None:
+                self.send_json({"error": "Conversation not found."}, status=404)
+                return
+
+            set_active_conversation(conversation_id)
+            self.send_json({"conversation": conversation})
+            return
+
         self.send_error(404, "Not found")
 
     def do_POST(self):
         path = urlparse(self.path).path
 
         if path == "/api/reset":
-            conversation_history.clear()
-            self.send_json({"message": "Conversation reset ho gayi."})
+            new_conversation = start_new_conversation()
+            self.send_json(
+                {
+                    "message": "Conversation reset ho gayi.",
+                    "conversationId": new_conversation["id"],
+                }
+            )
             return
 
         if path != "/api/chat":
@@ -336,10 +617,32 @@ class TagBotHandler(BaseHTTPRequestHandler):
                 )
             return
 
+        if path.startswith("/api/conversations/"):
+            conversation_id = unquote(path[len("/api/conversations/"):])
+
+            if not conversation_id:
+                self.send_json({"error": "Conversation id missing."}, status=400)
+                return
+
+            try:
+                delete_conversation(conversation_id)
+                self.send_json(
+                    {
+                        "message": "Conversation deleted.",
+                        "conversations": list_conversations(),
+                    }
+                )
+            except Exception as error:
+                self.send_json({"error": str(error)}, status=500)
+            return
+
         self.send_error(404, "Not found")
 
     def log_message(self, format, *args):
         return
+
+
+load_chat_history_store()
 
 
 if __name__ == "__main__":

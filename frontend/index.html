@@ -107,6 +107,39 @@
             font-size: 14px;
         }
 
+        .chat-list-items,
+        .memory-list-items {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chat-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .chat-item__text {
+            flex: 1;
+        }
+
+        .chat-item__meta {
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
         .messages {
             flex: 1;
             overflow-y: auto;
@@ -177,8 +210,11 @@
 
 #newChatButton,
 #memoriesButton,
+#chatsButton,
 #closeMemoriesButton,
-.memory-delete-button {
+#closeChatsButton,
+.memory-delete-button,
+.chat-delete-button {
     border: 1px solid #d1d5db;
     background: white;
     padding: 9px 14px;
@@ -189,12 +225,16 @@
 
 #newChatButton:hover,
 #memoriesButton:hover,
+#chatsButton:hover,
 #closeMemoriesButton:hover,
-.memory-delete-button:hover {
+#closeChatsButton:hover,
+.memory-delete-button:hover,
+.chat-delete-button:hover {
     background: #f9fafb;
 }
 
-.memory-delete-button {
+.memory-delete-button,
+.chat-delete-button {
     padding: 7px 10px;
     color: #b91c1c;
 }
@@ -212,6 +252,9 @@
     <div class="header-actions">
         <button id="memoriesButton" type="button">
             Memories
+        </button>
+        <button id="chatsButton" type="button">
+            Chats
         </button>
         <button id="newChatButton" type="button">
             New Chat
@@ -231,10 +274,19 @@
             </div>
         </section>
 
-        <section class="messages" id="messages">
-            <div class="message bot">
-                Hello bhai! Main TagBot AI hoon.
+        <section class="memory-panel" id="chatsPanel" hidden>
+            <div class="memory-panel__header">
+                <span>Saved chats</span>
+                <button id="closeChatsButton" type="button">
+                    Close
+                </button>
             </div>
+            <div id="chatList">
+                <p class="memory-empty">Loading chats…</p>
+            </div>
+        </section>
+
+        <section class="messages" id="messages">
         </section>
 
         <form class="input-area" id="chatForm">
@@ -258,9 +310,14 @@
     const sendButton = document.getElementById("sendButton");
     const newChatButton = document.getElementById("newChatButton");
     const memoriesButton = document.getElementById("memoriesButton");
+    const chatsButton = document.getElementById("chatsButton");
     const memoryPanel = document.getElementById("memoryPanel");
     const memoryList = document.getElementById("memoryList");
     const closeMemoriesButton = document.getElementById("closeMemoriesButton");
+    const chatsPanel = document.getElementById("chatsPanel");
+    const chatList = document.getElementById("chatList");
+    const closeChatsButton = document.getElementById("closeChatsButton");
+    let currentConversationMessages = [];
 
     function adjustTextareaHeight() {
         messageInput.style.height = "auto";
@@ -278,6 +335,40 @@
         messages.scrollTop = messages.scrollHeight;
 
         return message;
+    }
+
+    function renderConversation(conversation) {
+        currentConversationMessages = Array.isArray(conversation.messages) ? conversation.messages : [];
+        messages.innerHTML = "";
+
+        if (!currentConversationMessages.length) {
+            addMessage("Hello bhai! Main TagBot AI hoon.", "bot");
+            return;
+        }
+
+        currentConversationMessages.forEach((message) => {
+            addMessage(message.text, message.role === "user" ? "user" : "bot");
+        });
+    }
+
+    async function loadConversationState() {
+        try {
+            const response = await fetch("/api/conversations");
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Unable to load chat history.");
+            }
+
+            if (data.activeConversation) {
+                renderConversation(data.activeConversation);
+            } else {
+                renderConversation({ messages: [] });
+            }
+        } catch (error) {
+            messages.innerHTML = "";
+            addMessage(`Error: ${error.message}`, "bot");
+        }
     }
 
     async function loadMemories() {
@@ -348,6 +439,96 @@
         }
     }
 
+    async function loadChats() {
+        chatsPanel.hidden = false;
+        chatList.innerHTML = '<p class="memory-empty">Loading chats…</p>';
+
+        try {
+            const response = await fetch("/api/conversations");
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Unable to load chats.");
+            }
+
+            const conversations = Array.isArray(data.conversations) ? data.conversations : [];
+
+            if (!conversations.length) {
+                chatList.innerHTML = '<p class="memory-empty">No saved chats yet.</p>';
+                return;
+            }
+
+            const ul = document.createElement("ul");
+            ul.className = "chat-list-items";
+
+            conversations.forEach((conversation) => {
+                const li = document.createElement("li");
+                li.className = "chat-item";
+                li.innerHTML = `
+                    <div class="chat-item__text">
+                        <strong>${conversation.title}</strong>
+                        <div class="chat-item__meta">${conversation.updated_at}</div>
+                    </div>
+                    <button class="chat-delete-button" type="button">
+                        Delete
+                    </button>
+                `;
+
+                li.addEventListener("click", async function (event) {
+                    if (event.target.classList.contains("chat-delete-button")) {
+                        return;
+                    }
+
+                    try {
+                        const conversationResponse = await fetch(`/api/conversations/${encodeURIComponent(conversation.id)}`);
+                        const conversationData = await conversationResponse.json();
+
+                        if (!conversationResponse.ok) {
+                            throw new Error(conversationData.error || "Unable to load conversation.");
+                        }
+
+                        renderConversation(conversationData.conversation);
+                        chatsPanel.hidden = true;
+                    } catch (error) {
+                        chatList.innerHTML = `<p class="memory-empty">Error: ${error.message}</p>`;
+                    }
+                });
+
+                const deleteButton = li.querySelector(".chat-delete-button");
+                deleteButton.addEventListener("click", async function (event) {
+                    event.stopPropagation();
+                    const confirmed = window.confirm("Delete this conversation?");
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    try {
+                        const deleteResponse = await fetch(`/api/conversations/${encodeURIComponent(conversation.id)}`, {
+                            method: "DELETE"
+                        });
+                        const deleteData = await deleteResponse.json();
+
+                        if (!deleteResponse.ok) {
+                            throw new Error(deleteData.error || "Delete failed.");
+                        }
+
+                        await loadChats();
+                    } catch (error) {
+                        chatList.innerHTML = `<p class="memory-empty">Error: ${error.message}</p>`;
+                    }
+                });
+
+                ul.appendChild(li);
+            });
+
+            chatList.innerHTML = "";
+            chatList.appendChild(ul);
+        } catch (error) {
+            chatList.innerHTML = `<p class="memory-empty">Error: ${error.message}</p>`;
+        }
+    }
+
     messageInput.addEventListener("input", adjustTextareaHeight);
 
     messageInput.addEventListener("keydown", function (event) {
@@ -366,6 +547,7 @@
             return;
         }
 
+        currentConversationMessages.push({ role: "user", text });
         addMessage(text, "user");
         messageInput.value = "";
         adjustTextareaHeight();
@@ -390,6 +572,7 @@
                 throw new Error(data.error || "Request failed.");
             }
 
+            currentConversationMessages.push({ role: "assistant", text: data.reply });
             loadingMessage.textContent = data.reply;
         } catch (error) {
             loadingMessage.textContent = `Error: ${error.message}`;
@@ -400,6 +583,8 @@
     });
 
     memoriesButton.addEventListener("click", async function () {
+        chatsPanel.hidden = true;
+
         if (memoryPanel.hidden) {
             await loadMemories();
         } else {
@@ -407,8 +592,22 @@
         }
     });
 
+    chatsButton.addEventListener("click", async function () {
+        memoryPanel.hidden = true;
+
+        if (chatsPanel.hidden) {
+            await loadChats();
+        } else {
+            chatsPanel.hidden = true;
+        }
+    });
+
     closeMemoriesButton.addEventListener("click", function () {
         memoryPanel.hidden = true;
+    });
+
+    closeChatsButton.addEventListener("click", function () {
+        chatsPanel.hidden = true;
     });
 
     newChatButton.addEventListener("click", async function () {
@@ -425,12 +624,13 @@
                 throw new Error(data.error || "Reset failed.");
             }
 
+            currentConversationMessages = [];
             messages.innerHTML = "";
-
             addMessage(
                 "New chat start ho gayi. Permanent memories safe hain.",
                 "bot"
             );
+            await loadChats();
         } catch (error) {
             addMessage(`Error: ${error.message}`, "bot");
         } finally {
@@ -440,6 +640,7 @@
     });
 
     adjustTextareaHeight();
+    loadConversationState();
 </script>
 </body>
 </html>
